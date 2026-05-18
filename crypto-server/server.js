@@ -15,10 +15,10 @@ wss.on('connection', (socket) => {
         const incomingMessage = message.toString();
         console.log(`Received payload: ${incomingMessage}`);
 
-        // Broadcast: Send this message to EVERYONE who is currently connected
+        // Broadcast: Send this message to everyone EXCEPT the sender
         wss.clients.forEach((client) => {
-            // Check if the client's connection is open
-            if (client.readyState === WebSocket.OPEN) {
+            // Check if the client's connection is open AND the client is not the sender
+            if (client !== socket && client.readyState === WebSocket.OPEN) {
                 client.send(incomingMessage);
             }
         });
