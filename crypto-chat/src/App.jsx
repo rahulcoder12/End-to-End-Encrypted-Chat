@@ -1,40 +1,34 @@
 import { useState, useEffect, useRef } from 'react';
-import { generateKeyPair, exportPublicKey, importPublicKey, deriveSharedSecret } from './cryptoUtils';
+import { generateKeyPair, exportPublicKey, importPublicKey, deriveSharedSecret, encryptMessage, decryptMessage } from './cryptoUtils';
 
 function App() {
-  // --- States from Day 3 (The Pipeline) ---
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const ws = useRef(null);
   const [aesKey, setAesKey] = useState(null);
+  const [showCiphertext, setShowCiphertext] = useState(false);
 
-  // --- States from Day 4 (The Cryptography) ---
   const [myKeyPair, setMyKeyPair] = useState(null);
   const [terminalLogs, setTerminalLogs] = useState([
     "> System initialized...",
     "> Awaiting cryptographic exchange..."
   ]);
 
-  // useEffect runs once when the app loads
   useEffect(() => {
     const setupSecurity = async () => {
       try {
-        // 1. Generate the cryptographic keys
         setTerminalLogs(prev => [...prev, "> Generating ECDH Key Pair..."]);
         const keys = await generateKeyPair();
         setMyKeyPair(keys);
         
-        // Export public key to show in terminal
         const exportedPublic = await exportPublicKey(keys.publicKey);
         setTerminalLogs(prev => [...prev, `> Public Key generated: ${exportedPublic.x.substring(0, 15)}...`]);
 
-        // 2. Connect to the WebSocket
         ws.current = new WebSocket('ws://localhost:8080');
 
-                ws.current.onopen = () => {
+        ws.current.onopen = () => {
           setTerminalLogs(prev => [...prev, "> WebSocket connected. Broadcasting public key..."]);
           
-          // Package the public key as a JSON object and send it
           const handshakePayload = JSON.stringify({
             type: 'HANDSHAKE',
             publicKey: exportedPublic
@@ -42,31 +36,61 @@ function App() {
           ws.current.send(handshakePayload);
         };
 
-                ws.current.onmessage = async (event) => {
+        ws.current.onmessage = async (event) => {
           try {
             const data = JSON.parse(event.data);
 
             if (data.type === 'HANDSHAKE') {
               setTerminalLogs(prev => [...prev, `> Received Peer's Public Key: ${data.publicKey.x.substring(0, 15)}...`]);
               
-              // 1. Convert the JSON key back into a Web Crypto Key
               const peerPublicKey = await importPublicKey(data.publicKey);
-              
-              // 2. Derive the AES-256 Shared Secret!
-              // Note: We use the 'keys' variable generated earlier in the useEffect
               const sharedSecret = await deriveSharedSecret(keys.privateKey, peerPublicKey);
-              
-              // 3. Save it to React state so we can use it to encrypt messages later
               setAesKey(sharedSecret);
               
               setTerminalLogs(prev => [...prev, "> CRITICAL: AES-256 Shared Secret Derived Successfully!"]);
-              setTerminalLogs(prev => [...prev, "> Chat is now secured. Ready to encrypt."]);
+              
+              const replyPayload = JSON.stringify({
+                type: 'HANDSHAKE_REPLY',
+                publicKey: exportedPublic
+              });
+              ws.current.send(replyPayload);
             } 
+            
+            else if (data.type === 'HANDSHAKE_REPLY') {
+              setTerminalLogs(prev => [...prev, `> Received Handshake Reply: ${data.publicKey.x.substring(0, 15)}...`]);
+              
+              const peerPublicKey = await importPublicKey(data.publicKey);
+              const sharedSecret = await deriveSharedSecret(keys.privateKey, peerPublicKey);
+              setAesKey(sharedSecret);
+              
+              setTerminalLogs(prev => [...prev, "> CRITICAL: AES-256 Shared Secret Derived Successfully!"]);
+            }
+            
             else if (data.type === 'CHAT') {
-              setMessages((prevMessages) => [...prevMessages, data.text]);
+              if (data.ciphertext && data.iv) {
+                setTerminalLogs(prev => [...prev, `> Inbound Encrypted: ${data.ciphertext.substring(0, 20)}...`]);
+                
+                setAesKey(currentAesKey => {
+                  if (currentAesKey) {
+                    decryptMessage(data.ciphertext, data.iv, currentAesKey)
+                      .then(decryptedText => {
+                      setMessages(prev => [...prev, { 
+                          sender: 'Peer', 
+                          text: decryptedText, 
+                          cipher: data.ciphertext 
+                      }]);                       
+                      setTerminalLogs(prev => [...prev, `> Successfully decrypted payload.`]);
+                      })
+                      .catch(err => console.error("Decryption failed", err));
+                  } else {
+                     setTerminalLogs(prev => [...prev, `> ERROR: No AES key to decrypt message!`]);
+                  }
+                  return currentAesKey; 
+                });
+              }
             }
           } catch (e) {
-            setMessages((prevMessages) => [...prevMessages, event.data]);
+            console.log("Ignored non-JSON message", e);
           }
         };
       } catch (error) {
@@ -77,24 +101,48 @@ function App() {
 
     setupSecurity();
 
-    // Cleanup function
     return () => {
       if (ws.current) ws.current.close();
     };
   }, []);
 
-  // Function to handle sending a message
-    const sendMessage = () => {
+  const sendMessage = async () => {
     if (inputText.trim() === '') return;
-    
+
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      // Package the chat message as a JSON object
-      const chatPayload = JSON.stringify({
-        type: 'CHAT',
-        text: inputText
-      });
-      
-      ws.current.send(chatPayload);
+
+      if (aesKey) {
+        // --- ENCRYPTED MODE ---
+        const { ciphertext, iv } = await encryptMessage(inputText, aesKey);
+
+        const payload = JSON.stringify({
+          type: 'CHAT',
+          ciphertext: ciphertext,
+          iv: iv
+        });
+
+        ws.current.send(payload);
+
+        setTerminalLogs(prev => [...prev, `> Outbound Encrypted: ${ciphertext.substring(0, 20)}...`]);
+
+        setMessages(prev => [...prev, { 
+            sender: 'Me', 
+            text: inputText, 
+            cipher: ciphertext 
+        }]);
+      } else {
+        // --- UNSECURED FALLBACK ---
+        const payload = JSON.stringify({ type: 'CHAT', text: inputText });
+        ws.current.send(payload);
+        
+        // FIX: Provide a fallback string instead of the undefined 'ciphertext' variable
+        setMessages(prev => [...prev, { 
+            sender: 'Me', 
+            text: inputText, 
+            cipher: "[Unencrypted System Message]" 
+        }]);    
+      }
+
       setInputText(''); 
     }
   };
@@ -118,21 +166,41 @@ function App() {
 
       {/* CENTER PANE: The User View (Chat) */}
       <div className="w-2/4 flex flex-col bg-gray-900">
-        <div className="p-4 border-b border-gray-700 flex-1 overflow-y-auto flex flex-col gap-2">
-          <h2 className="text-xl font-bold mb-4 text-green-400">Secure Chat</h2>
+        
+        {/* Chat Header with Toggle */}
+        <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-800">
+          <div>
+            <h2 className="text-xl font-bold text-green-400 flex items-center gap-2">
+              Secure Chat 
+              {aesKey && <span title="AES-256 Secured" className="text-sm px-2 py-1 bg-green-900 text-green-300 rounded-full">🔒 E2EE Active</span>}
+            </h2>
+          </div>
           
+          <button 
+            onClick={() => setShowCiphertext(!showCiphertext)}
+            className={`text-xs font-bold px-3 py-1 rounded transition-colors ${showCiphertext ? 'bg-red-600 text-white' : 'bg-gray-600 text-gray-300 hover:bg-gray-500'}`}
+          >
+            {showCiphertext ? '⚠️ HACKER VIEW (CIPHERTEXT)' : 'USER VIEW (PLAINTEXT)'}
+          </button>
+        </div>
+
+        {/* Chat Messages Area */}
+        <div className="p-4 flex-1 overflow-y-auto flex flex-col gap-3">
           {messages.length === 0 ? (
             <div className="text-gray-400 italic mt-auto">Waiting for messages...</div>
           ) : (
             messages.map((msg, index) => (
-              <div key={index} className="p-3 bg-gray-800 rounded-lg w-fit max-w-md">
-                {msg}
+              <div key={index} className={`flex flex-col w-fit max-w-[80%] ${msg.sender === 'Me' ? 'self-end' : 'self-start'}`}>
+                <span className="text-xs text-gray-500 mb-1">{msg.sender}</span>
+                <div className={`p-3 rounded-lg ${msg.sender === 'Me' ? 'bg-blue-600' : 'bg-gray-700'} ${showCiphertext ? 'font-mono text-xs break-all bg-red-900 text-red-200 border border-red-700' : ''}`}>
+                  {showCiphertext ? (msg.cipher || 'Unencrypted system message') : msg.text}
+                </div>
               </div>
             ))
           )}
         </div>
         
-        {/* Chat Input Area */}
+        {/* FIX: Removed the duplicated Chat Input Area from here */}
         <div className="p-4 bg-gray-800 flex gap-2">
           <input 
             type="text" 
@@ -155,7 +223,6 @@ function App() {
       <div className="w-1/4 bg-black border-l border-gray-700 p-4 font-mono text-xs text-green-500 overflow-y-auto">
         <h2 className="text-sm font-bold mb-4 text-gray-400 uppercase tracking-widest">System Terminal</h2>
         
-        {/* Dynamically render the logs */}
         {terminalLogs.map((log, index) => (
           <div key={index}>{log}</div>
         ))}
