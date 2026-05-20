@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { generateKeyPair, exportPublicKey, importPublicKey, deriveSharedSecret, encryptMessage, decryptMessage } from './cryptoUtils';
+import Sidebar from './components/Sidebar';
+import Terminal from './components/Terminal';
 
 function App() {
   const [username, setUsername] = useState('');
@@ -19,10 +21,9 @@ function App() {
     "> Waiting for user login..."
   ]);
 
-  // --- NEW: Save chat history locally whenever messages change ---
+  // Save chat history locally whenever messages change
   useEffect(() => {
     if (username && selectedTarget && messages.length > 0) {
-        // We use a unique storage key for each 1-on-1 relationship
         const storageKey = `chat_${username}_${selectedTarget}`;
         localStorage.setItem(storageKey, JSON.stringify(messages));
     }
@@ -59,7 +60,6 @@ function App() {
             else if (data.type === 'HANDSHAKE') {
               setTerminalLogs(prev => [...prev, `> Handshake received from ${data.sender}`]);
               
-              // Automatically switch to the person calling us and load history
               setSelectedTarget(data.sender);
               const savedHistory = localStorage.getItem(`chat_${username}_${data.sender}`);
               setMessages(savedHistory ? JSON.parse(savedHistory) : []);
@@ -125,9 +125,8 @@ function App() {
 
   const startChat = async (peerName) => {
     setSelectedTarget(peerName);
-    setAesKey(null); // Clear old lock
+    setAesKey(null); 
     
-    // --- NEW: Load history from local storage when clicking a name ---
     const savedHistory = localStorage.getItem(`chat_${username}_${peerName}`);
     if (savedHistory) {
         setMessages(JSON.parse(savedHistory));
@@ -180,23 +179,23 @@ function App() {
 
   if (!isLoggedIn) {
       return (
-          <div className="flex h-screen bg-gray-900 justify-center items-center font-sans">
-              <div className="bg-gray-800 p-8 rounded-lg shadow-xl w-96 flex flex-col gap-4">
-                  <h1 className="text-2xl font-bold text-green-400 text-center mb-4">Secure Terminal Login</h1>
+          <div className="flex h-screen bg-[#0b141a] justify-center items-center font-sans">
+              <div className="bg-[#111b21] p-8 rounded-lg shadow-2xl w-96 flex flex-col gap-4 border border-[#202c33]">
+                  <h1 className="text-2xl font-bold text-[#00a884] text-center mb-4">Secure Network Login</h1>
                   <input 
                       type="text" 
                       placeholder="Enter your Display Name" 
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && setIsLoggedIn(true)}
-                      className="p-3 rounded bg-gray-700 text-white outline-none focus:ring-2 focus:ring-green-500"
+                      className="p-3 rounded bg-[#202c33] text-[#e9edef] outline-none focus:ring-2 focus:ring-[#00a884]"
                   />
                   <button 
                       onClick={() => setIsLoggedIn(true)}
                       disabled={!username.trim()}
-                      className="bg-green-600 hover:bg-green-500 disabled:bg-gray-600 text-white font-bold py-3 px-4 rounded transition-colors"
+                      className="bg-[#00a884] hover:bg-[#008f6f] disabled:bg-[#202c33] disabled:text-gray-500 text-white font-bold py-3 px-4 rounded transition-colors"
                   >
-                      Connect to Network
+                      Connect
                   </button>
               </div>
           </div>
@@ -204,64 +203,71 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-900 text-white font-sans">
+    <div className="flex h-screen bg-[#0b141a] text-[#e9edef] font-sans overflow-hidden">
       
-      {/* LEFT PANE: Active Sessions */}
-      <div className="w-1/4 bg-gray-800 border-r border-gray-700 p-4 flex flex-col">
-        <h2 className="text-xl font-bold mb-4 text-blue-400">Online Users</h2>
-        <div className="flex-1 overflow-y-auto flex flex-col gap-2">
-            {onlineUsers.length === 0 ? (
-                <div className="text-gray-500 italic text-sm">No one else is online...</div>
-            ) : (
-                onlineUsers.map(user => (
-                    <div 
-                        key={user}
-                        onClick={() => startChat(user)}
-                        className={`p-3 rounded-lg cursor-pointer transition-colors flex items-center gap-2 ${selectedTarget === user ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}
-                    >
-                        <div className="w-2 h-2 rounded-full bg-green-400"></div>
-                        {user}
-                    </div>
-                ))
-            )}
-        </div>
-        <div className="mt-4 pt-4 border-t border-gray-700 text-sm text-gray-400">
-            Logged in as: <span className="font-bold text-white">{username}</span>
-        </div>
-      </div>
+      <Sidebar 
+        username={username}
+        onlineUsers={onlineUsers}
+        selectedTarget={selectedTarget}
+        startChat={startChat}
+      />
 
       {/* CENTER PANE: The User View (Chat) */}
-      <div className="w-2/4 flex flex-col bg-gray-900">
-        
-        {/* Chat Header with Toggle */}
-        <div className="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-800">
-          <div>
-            <h2 className="text-xl font-bold text-green-400 flex items-center gap-2">
-              {selectedTarget ? `Chatting with ${selectedTarget}` : 'Select a user to chat'}
-              {aesKey && <span title="AES-256 Secured" className="text-sm px-2 py-1 bg-green-900 text-green-300 rounded-full">🔒 E2EE Active</span>}
-            </h2>
+      <div 
+        className="w-2/4 flex flex-col relative" 
+        style={{ 
+          backgroundImage: 'url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")', 
+          backgroundSize: 'contain',
+          backgroundColor: '#0b141a'
+        }}
+      >
+        {/* WhatsApp Header */}
+        <div className="p-3 bg-[#202c33] flex justify-between items-center z-10 shadow-sm">
+          <div className="flex items-center gap-3">
+            {selectedTarget ? (
+              <>
+                <div className="w-10 h-10 bg-[#6b7c85] rounded-full flex items-center justify-center font-bold text-white">
+                  {selectedTarget.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <h2 className="font-semibold text-[#e9edef]">{selectedTarget}</h2>
+                  {aesKey && <p className="text-xs text-[#00a884] flex items-center gap-1">🔒 E2EE Active</p>}
+                </div>
+              </>
+            ) : (
+              <h2 className="font-bold text-gray-400">Select a contact</h2>
+            )}
           </div>
           
           <button 
             onClick={() => setShowCiphertext(!showCiphertext)}
-            className={`text-xs font-bold px-3 py-1 rounded transition-colors ${showCiphertext ? 'bg-red-600 text-white' : 'bg-gray-600 text-gray-300 hover:bg-gray-500'}`}
+            className={`text-xs font-bold px-3 py-2 rounded-lg transition-colors shadow ${showCiphertext ? 'bg-red-900 text-red-200 hover:bg-red-800' : 'bg-[#2a3942] text-gray-300 hover:bg-[#3d4b53]'}`}
           >
-            {showCiphertext ? '⚠️ HACKER VIEW (CIPHERTEXT)' : 'USER VIEW (PLAINTEXT)'}
+            {showCiphertext ? '⚠️ HACKER VIEW' : '👁️ USER VIEW'}
           </button>
         </div>
 
         {/* Chat Messages Area */}
-        <div className="p-4 flex-1 overflow-y-auto flex flex-col gap-3">
+        <div className="p-4 flex-1 overflow-y-auto flex flex-col gap-2 z-10">
           {!selectedTarget ? (
-              <div className="text-gray-500 italic m-auto">Click a user on the left to initiate a secure handshake.</div>
+              <div className="bg-[#202c33] text-gray-300 text-sm py-2 px-4 rounded-full m-auto shadow">
+                  Click a user on the left to initiate a secure handshake.
+              </div>
           ) : messages.length === 0 ? (
-            <div className="text-gray-400 italic mt-auto">Secure connection established. Say hi!</div>
+            <div className="bg-[#182229] text-[#ffd02c] text-xs py-2 px-4 rounded-lg mx-auto shadow-md text-center max-w-sm mb-4 border border-[#202c33]">
+              🔒 Messages are end-to-end encrypted. No one outside of this chat, not even the server, can read them.
+            </div>
           ) : (
             messages.map((msg, index) => (
-              <div key={index} className={`flex flex-col w-fit max-w-[80%] ${msg.sender === 'Me' ? 'self-end' : 'self-start'}`}>
-                <span className="text-xs text-gray-500 mb-1">{msg.sender}</span>
-                <div className={`p-3 rounded-lg ${msg.sender === 'Me' ? 'bg-blue-600' : 'bg-gray-700'} ${showCiphertext ? 'font-mono text-xs break-all bg-red-900 text-red-200 border border-red-700' : ''}`}>
-                  {showCiphertext ? (msg.cipher || 'Unencrypted system message') : msg.text}
+              <div key={index} className={`flex flex-col w-fit max-w-[85%] ${msg.sender === 'Me' ? 'self-end' : 'self-start'}`}>
+                <div className={`p-2 px-3 relative shadow-sm ${msg.sender === 'Me' ? 'bg-[#005c4b] rounded-lg rounded-tr-none' : 'bg-[#202c33] rounded-lg rounded-tl-none'} ${showCiphertext ? 'font-mono text-xs break-all border border-red-700 bg-[#3f1d1d] text-red-200' : ''}`}>
+                  <div className="text-[15px] leading-relaxed text-[#e9edef]">
+                      {showCiphertext ? (msg.cipher || 'Unencrypted system message') : msg.text}
+                  </div>
+                  <div className="text-[10px] text-gray-400 text-right mt-1 flex justify-end items-center gap-1">
+                      {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      {msg.sender === 'Me' && <span className="text-[#53bdeb] text-sm leading-none">✓✓</span>}
+                  </div>
                 </div>
               </div>
             ))
@@ -269,33 +275,30 @@ function App() {
         </div>
         
         {/* Chat Input Area */}
-        <div className="p-4 bg-gray-800 flex gap-2">
+        <div className="p-3 bg-[#202c33] flex gap-2 items-center z-10">
           <input 
             type="text" 
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={!selectedTarget || !aesKey}
-            placeholder={!selectedTarget ? "Select a user first..." : "Type an encrypted message..."} 
-            className="flex-1 p-3 rounded bg-gray-700 text-white outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+            placeholder={!selectedTarget ? "Select a user first..." : "Type a message"} 
+            className="flex-1 py-3 px-4 rounded-lg bg-[#2a3942] text-white outline-none focus:bg-[#3d4b53] disabled:opacity-50 transition-colors placeholder-gray-400"
           />
           <button 
             onClick={sendMessage}
             disabled={!selectedTarget || !aesKey}
-            className="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 text-white font-bold py-2 px-4 rounded transition-colors"
+            className="bg-[#00a884] hover:bg-[#008f6f] disabled:bg-[#2a3942] disabled:text-gray-500 text-white p-3 rounded-full transition-colors flex items-center justify-center w-12 h-12"
           >
-            Send
+            {/* Simple Send Icon SVG */}
+            <svg viewBox="0 0 24 24" height="24" width="24" preserveAspectRatio="xMidYMid meet" fill="currentColor">
+                <path d="M1.101 21.757 23.8 12.028 1.101 2.3l.011 7.912 13.623 1.816-13.623 1.817-.011 7.912z"></path>
+            </svg>
           </button>
         </div>
       </div>
 
-      {/* RIGHT PANE: The Engineer View (Terminal) */}
-      <div className="w-1/4 bg-black border-l border-gray-700 p-4 font-mono text-xs text-green-500 overflow-y-auto">
-        <h2 className="text-sm font-bold mb-4 text-gray-400 uppercase tracking-widest">System Terminal</h2>
-        {terminalLogs.map((log, index) => (
-          <div key={index}>{log}</div>
-        ))}
-      </div>
+      <Terminal logs={terminalLogs} />
 
     </div>
   )
