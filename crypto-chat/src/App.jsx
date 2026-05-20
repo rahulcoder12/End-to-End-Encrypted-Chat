@@ -12,6 +12,7 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const ws = useRef(null);
+  const messagesEndRef = useRef(null); // <-- NEW: Ref to track the bottom of the chat
   const [aesKey, setAesKey] = useState(null);
   const [showCiphertext, setShowCiphertext] = useState(false);
   const [showTerminal, setShowTerminal] = useState(true);
@@ -22,6 +23,11 @@ function App() {
     "> Waiting for user login..."
   ]);
 
+  // --- NEW: Auto-scroll to bottom whenever messages update ---
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, showTerminal]);
+
   // Save chat history locally whenever messages change
   useEffect(() => {
     if (username && selectedTarget && messages.length > 0) {
@@ -29,6 +35,20 @@ function App() {
         localStorage.setItem(storageKey, JSON.stringify(messages));
     }
   }, [messages, selectedTarget, username]);
+
+  // --- NEW: Handle Graceful Disconnects ---
+  useEffect(() => {
+    // If we have a target, but they are no longer in the online users list...
+    if (selectedTarget && !onlineUsers.includes(selectedTarget)) {
+      setTerminalLogs(prev => [...prev, `> WARNING: ${selectedTarget} disconnected. Destroying AES lock.`]);
+      setAesKey(null); // Wipe the cryptographic lock
+      setMessages(prev => [...prev, { 
+        sender: 'System', 
+        text: `${selectedTarget} has left the network. Secure connection dropped.`, 
+        cipher: null 
+      }]);
+    }
+  }, [onlineUsers, selectedTarget]);
 
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -213,7 +233,6 @@ function App() {
         startChat={startChat}
       />
 
-      {/* CENTER PANE: The User View (Chat) */}
       <div 
         className={`flex flex-col relative transition-all duration-300 ${showTerminal ? 'w-2/4' : 'flex-1'}`} 
         style={{ 
@@ -222,7 +241,6 @@ function App() {
           backgroundColor: '#0b141a'
         }}
       >
-        {/* WhatsApp Header */}
         <div className="p-3 bg-[#202c33] flex justify-between items-center z-10 shadow-sm">
           <div className="flex items-center gap-3">
             {selectedTarget ? (
@@ -232,7 +250,11 @@ function App() {
                 </div>
                 <div>
                   <h2 className="font-semibold text-[#e9edef]">{selectedTarget}</h2>
-                  {aesKey && <p className="text-xs text-[#00a884] flex items-center gap-1">🔒 E2EE Active</p>}
+                  {aesKey ? (
+                    <p className="text-xs text-[#00a884] flex items-center gap-1">🔒 E2EE Active</p>
+                  ) : (
+                    <p className="text-xs text-red-400 flex items-center gap-1">Disconnected</p>
+                  )}
                 </div>
               </>
             ) : (
@@ -240,7 +262,6 @@ function App() {
             )}
           </div>
           
-          {/* Header Buttons */}
           <div className="flex gap-2">
             <button 
               onClick={() => setShowTerminal(!showTerminal)}
@@ -257,7 +278,6 @@ function App() {
           </div>
         </div>
 
-        {/* Chat Messages Area */}
         <div className="p-4 flex-1 overflow-y-auto flex flex-col gap-2 z-10">
           {!selectedTarget ? (
               <div className="bg-[#202c33] text-gray-300 text-sm py-2 px-4 rounded-full m-auto shadow">
@@ -268,23 +288,35 @@ function App() {
               🔒 Messages are end-to-end encrypted. No one outside of this chat, not even the server, can read them.
             </div>
           ) : (
-            messages.map((msg, index) => (
-              <div key={index} className={`flex flex-col w-fit max-w-[85%] ${msg.sender === 'Me' ? 'self-end' : 'self-start'}`}>
-                <div className={`p-2 px-3 relative shadow-sm ${msg.sender === 'Me' ? 'bg-[#005c4b] rounded-lg rounded-tr-none' : 'bg-[#202c33] rounded-lg rounded-tl-none'} ${showCiphertext ? 'font-mono text-xs break-all border border-red-700 bg-[#3f1d1d] text-red-200' : ''}`}>
-                  <div className="text-[15px] leading-relaxed text-[#e9edef]">
-                      {showCiphertext ? (msg.cipher || 'Unencrypted system message') : msg.text}
+            messages.map((msg, index) => {
+              // --- NEW: UI for System Messages (like Disconnects) ---
+              if (msg.sender === 'System') {
+                return (
+                  <div key={index} className="bg-[#182229] text-[#ffd02c] text-xs py-2 px-4 rounded-lg mx-auto shadow-md text-center max-w-sm my-2 border border-[#202c33]">
+                    ⚠️ {msg.text}
                   </div>
-                  <div className="text-[10px] text-gray-400 text-right mt-1 flex justify-end items-center gap-1">
-                      {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                      {msg.sender === 'Me' && <span className="text-[#53bdeb] text-sm leading-none">✓✓</span>}
+                );
+              }
+
+              return (
+                <div key={index} className={`flex flex-col w-fit max-w-[85%] ${msg.sender === 'Me' ? 'self-end' : 'self-start'}`}>
+                  <div className={`p-2 px-3 relative shadow-sm ${msg.sender === 'Me' ? 'bg-[#005c4b] rounded-lg rounded-tr-none' : 'bg-[#202c33] rounded-lg rounded-tl-none'} ${showCiphertext ? 'font-mono text-xs break-all border border-red-700 bg-[#3f1d1d] text-red-200' : ''}`}>
+                    <div className="text-[15px] leading-relaxed text-[#e9edef]">
+                        {showCiphertext ? (msg.cipher || 'Unencrypted system message') : msg.text}
+                    </div>
+                    <div className="text-[10px] text-gray-400 text-right mt-1 flex justify-end items-center gap-1">
+                        {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        {msg.sender === 'Me' && <span className="text-[#53bdeb] text-sm leading-none">✓✓</span>}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
+          {/* --- NEW: Invisible div to pull the scroll down --- */}
+          <div ref={messagesEndRef} />
         </div>
         
-        {/* Chat Input Area */}
         <div className="p-3 bg-[#202c33] flex gap-2 items-center z-10">
           <input 
             type="text" 
@@ -292,7 +324,7 @@ function App() {
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={!selectedTarget || !aesKey}
-            placeholder={!selectedTarget ? "Select a user first..." : "Type a message"} 
+            placeholder={!selectedTarget ? "Select a user first..." : !aesKey ? "Connection offline..." : "Type a message"} 
             className="flex-1 py-3 px-4 rounded-lg bg-[#2a3942] text-white outline-none focus:bg-[#3d4b53] disabled:opacity-50 transition-colors placeholder-gray-400"
           />
           <button 
@@ -300,7 +332,6 @@ function App() {
             disabled={!selectedTarget || !aesKey}
             className="bg-[#00a884] hover:bg-[#008f6f] disabled:bg-[#2a3942] disabled:text-gray-500 text-white p-3 rounded-full transition-colors flex items-center justify-center w-12 h-12"
           >
-            {/* Simple Send Icon SVG */}
             <svg viewBox="0 0 24 24" height="24" width="24" preserveAspectRatio="xMidYMid meet" fill="currentColor">
                 <path d="M1.101 21.757 23.8 12.028 1.101 2.3l.011 7.912 13.623 1.816-13.623 1.817-.011 7.912z"></path>
             </svg>
@@ -308,7 +339,6 @@ function App() {
         </div>
       </div>
 
-      {/* Conditionally render the Terminal */}
       {showTerminal && <Terminal logs={terminalLogs} />}
 
     </div>
