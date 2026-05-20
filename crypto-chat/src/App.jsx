@@ -14,6 +14,7 @@ function App() {
   const ws = useRef(null);
   const [aesKey, setAesKey] = useState(null);
   const [showCiphertext, setShowCiphertext] = useState(false);
+  const [showTerminal, setShowTerminal] = useState(true);
 
   const [myKeyPair, setMyKeyPair] = useState(null);
   const [terminalLogs, setTerminalLogs] = useState([
@@ -214,7 +215,7 @@ function App() {
 
       {/* CENTER PANE: The User View (Chat) */}
       <div 
-        className="w-2/4 flex flex-col relative" 
+        className={`flex flex-col relative transition-all duration-300 ${showTerminal ? 'w-2/4' : 'flex-1'}`} 
         style={{ 
           backgroundImage: 'url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")', 
           backgroundSize: 'contain',
@@ -239,12 +240,21 @@ function App() {
             )}
           </div>
           
-          <button 
-            onClick={() => setShowCiphertext(!showCiphertext)}
-            className={`text-xs font-bold px-3 py-2 rounded-lg transition-colors shadow ${showCiphertext ? 'bg-red-900 text-red-200 hover:bg-red-800' : 'bg-[#2a3942] text-gray-300 hover:bg-[#3d4b53]'}`}
-          >
-            {showCiphertext ? '⚠️ HACKER VIEW' : '👁️ USER VIEW'}
-          </button>
+          {/* Header Buttons */}
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setShowTerminal(!showTerminal)}
+              className={`text-xs font-bold px-3 py-2 rounded-lg transition-colors shadow ${showTerminal ? 'bg-[#2a3942] text-gray-300 hover:bg-[#3d4b53]' : 'bg-[#00a884] text-white hover:bg-[#008f6f]'}`}
+            >
+              {showTerminal ? 'HIDE TERMINAL' : 'SHOW TERMINAL'}
+            </button>
+            <button 
+              onClick={() => setShowCiphertext(!showCiphertext)}
+              className={`text-xs font-bold px-3 py-2 rounded-lg transition-colors shadow ${showCiphertext ? 'bg-red-900 text-red-200 hover:bg-red-800' : 'bg-[#2a3942] text-gray-300 hover:bg-[#3d4b53]'}`}
+            >
+              {showCiphertext ? '⚠️ HACKER VIEW' : '👁️ USER VIEW'}
+            </button>
+          </div>
         </div>
 
         {/* Chat Messages Area */}
@@ -298,7 +308,8 @@ function App() {
         </div>
       </div>
 
-      <Terminal logs={terminalLogs} />
+      {/* Conditionally render the Terminal */}
+      {showTerminal && <Terminal logs={terminalLogs} />}
 
     </div>
   )
