@@ -4,15 +4,13 @@ import Sidebar from './components/Sidebar';
 import Terminal from './components/Terminal';
 
 function App() {
-  // --- AUTHENTICATION STATES ---
   const [authMode, setAuthMode] = useState('LOGIN'); 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState(''); // NEW
+  const [confirmPassword, setConfirmPassword] = useState(''); 
   const [authError, setAuthError] = useState('');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   
-  // --- CAPTCHA STATES ---
   const [captcha, setCaptcha] = useState({ num1: 0, num2: 0, answer: 0 });
   const [captchaInput, setCaptchaInput] = useState('');
 
@@ -31,7 +29,6 @@ function App() {
     "> Waiting for user authentication..."
   ]);
 
-  // Generate a random math problem for the CAPTCHA
   const generateCaptcha = () => {
     const n1 = Math.floor(Math.random() * 10) + 1;
     const n2 = Math.floor(Math.random() * 10) + 1;
@@ -39,7 +36,6 @@ function App() {
     setCaptchaInput('');
   };
 
-  // Run once on load, and regenerate if they switch between Login/Register
   useEffect(() => {
     generateCaptcha();
     setAuthError('');
@@ -54,18 +50,14 @@ function App() {
     }
   }, [messages, selectedTarget, username]);
 
-  // Handle Login/Register Request with Bot Protection
   const handleAuth = () => {
       if (!username.trim() || !password.trim() || !captchaInput.trim()) return;
       
-      // 1. CAPTCHA Check
       if (parseInt(captchaInput) !== captcha.answer) {
           setAuthError('CAPTCHA verification failed. Are you a bot?');
-          generateCaptcha(); // Force a new test if they fail
+          generateCaptcha(); 
           return;
       }
-
-      // 2. Confirm Password Check (Only on Register)
       if (authMode === 'REGISTER' && password !== confirmPassword) {
           setAuthError('Passwords do not match.');
           return;
@@ -78,14 +70,20 @@ function App() {
           ws.current.send(JSON.stringify({ type: authMode, username, password }));
       };
       
+      // THE FIX: Catch the USER_LIST even while authenticating
       ws.current.onmessage = (event) => {
           const data = JSON.parse(event.data);
           if (data.type === 'AUTH_ERROR') {
               setAuthError(data.message);
-              generateCaptcha(); // Regenerate CAPTCHA on server rejection
+              generateCaptcha(); 
               ws.current.close();
           } else if (data.type === 'AUTH_SUCCESS') {
               setIsLoggedIn(true);
+              // Explicitly ask for the list right now
+              ws.current.send(JSON.stringify({ type: 'REQUEST_USER_LIST' }));
+          } else if (data.type === 'USER_LIST') {
+              const peers = data.users.filter(name => name !== username);
+              setOnlineUsers(peers);
           }
       };
   };
@@ -101,6 +99,9 @@ function App() {
         
         const exportedPublic = await exportPublicKey(keys.publicKey);
         setTerminalLogs(prev => [...prev, `> Public Key generated.`]);
+
+        // THE FIX: Re-ask for the list just in case the math took too long
+        ws.current.send(JSON.stringify({ type: 'REQUEST_USER_LIST' }));
 
         ws.current.onmessage = async (event) => {
           try {
@@ -168,6 +169,8 @@ function App() {
   }, [isLoggedIn, username]);
 
   const startChat = async (peerName) => {
+    if (!myKeyPair) return; // Prevent crashes if keys aren't ready
+
     setSelectedTarget(peerName);
     setAesKey(null); 
     
@@ -216,7 +219,6 @@ function App() {
     }
   };
 
-  // --- 1. THE AUTHENTICATION UI ---
   if (!isLoggedIn) {
       return (
           <div className="flex h-screen bg-[#0b141a] justify-center items-center font-sans">
@@ -251,7 +253,6 @@ function App() {
                       className="p-3 rounded bg-[#202c33] text-[#e9edef] outline-none focus:ring-2 focus:ring-[#00a884]"
                   />
                   
-                  {/* Conditionally render Confirm Password only on Register */}
                   {authMode === 'REGISTER' && (
                       <input 
                           type="password" 
@@ -262,7 +263,6 @@ function App() {
                       />
                   )}
 
-                  {/* Math CAPTCHA UI */}
                   <div className="bg-[#202c33] p-3 rounded flex items-center justify-between border border-[#2a3942]">
                       <span className="text-gray-300 font-mono text-sm tracking-wider">
                           Prove you are human:<br/> <strong className="text-[#00a884] text-lg">{captcha.num1} + {captcha.num2} = ?</strong>
@@ -288,7 +288,6 @@ function App() {
       );
   }
 
-  // --- 2. THE CHAT UI ---
   return (
     <div className="flex h-screen bg-[#0b141a] text-[#e9edef] font-sans overflow-hidden">
       <Sidebar 
@@ -366,13 +365,18 @@ function App() {
         </div>
         
         <div className="p-3 bg-[#202c33] flex gap-2 items-center z-10">
+          {/* THE FIX: Enhanced placeholder text to show EXACTLY what is blocking the typing */}
           <input 
             type="text" 
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={!selectedTarget || !aesKey}
-            placeholder={!selectedTarget ? "Select a user first..." : "Type a message"} 
+            placeholder={
+                !selectedTarget ? "Select a user first..." : 
+                !aesKey ? "Negotiating secure connection..." : 
+                "Type a message"
+            } 
             className="flex-1 py-3 px-4 rounded-lg bg-[#2a3942] text-white outline-none focus:bg-[#3d4b53] disabled:opacity-50 transition-colors placeholder-gray-400"
           />
           <button 
