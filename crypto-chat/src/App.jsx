@@ -29,6 +29,9 @@ function App() {
     "> Waiting for user authentication..."
   ]);
 
+  // --- NEW: Helper variable to track if our current chat partner is online ---
+  const isTargetOnline = selectedTarget && onlineUsers.includes(selectedTarget);
+
   const generateCaptcha = () => {
     const n1 = Math.floor(Math.random() * 10) + 1;
     const n2 = Math.floor(Math.random() * 10) + 1;
@@ -50,6 +53,17 @@ function App() {
     }
   }, [messages, selectedTarget, username]);
 
+  // --- NEW: The Disconnect Tripwire ---
+  // If our selected target drops offline, destroy the lock and log it.
+  useEffect(() => {
+    if (selectedTarget && !onlineUsers.includes(selectedTarget)) {
+      if (aesKey) {
+        setAesKey(null);
+        setTerminalLogs(prev => [...prev, `> WARNING: ${selectedTarget} disconnected. Secure tunnel collapsed.`]);
+      }
+    }
+  }, [onlineUsers, selectedTarget, aesKey]);
+
   const handleAuth = () => {
       if (!username.trim() || !password.trim() || !captchaInput.trim()) return;
       
@@ -70,7 +84,6 @@ function App() {
           ws.current.send(JSON.stringify({ type: authMode, username, password }));
       };
       
-      // THE FIX: Catch the USER_LIST even while authenticating
       ws.current.onmessage = (event) => {
           const data = JSON.parse(event.data);
           if (data.type === 'AUTH_ERROR') {
@@ -79,7 +92,6 @@ function App() {
               ws.current.close();
           } else if (data.type === 'AUTH_SUCCESS') {
               setIsLoggedIn(true);
-              // Explicitly ask for the list right now
               ws.current.send(JSON.stringify({ type: 'REQUEST_USER_LIST' }));
           } else if (data.type === 'USER_LIST') {
               const peers = data.users.filter(name => name !== username);
@@ -100,7 +112,6 @@ function App() {
         const exportedPublic = await exportPublicKey(keys.publicKey);
         setTerminalLogs(prev => [...prev, `> Public Key generated.`]);
 
-        // THE FIX: Re-ask for the list just in case the math took too long
         ws.current.send(JSON.stringify({ type: 'REQUEST_USER_LIST' }));
 
         ws.current.onmessage = async (event) => {
@@ -169,7 +180,7 @@ function App() {
   }, [isLoggedIn, username]);
 
   const startChat = async (peerName) => {
-    if (!myKeyPair) return; // Prevent crashes if keys aren't ready
+    if (!myKeyPair) return; 
 
     setSelectedTarget(peerName);
     setAesKey(null); 
@@ -314,7 +325,12 @@ function App() {
                 </div>
                 <div>
                   <h2 className="font-semibold text-[#e9edef]">{selectedTarget}</h2>
-                  {aesKey && <p className="text-xs text-[#00a884] flex items-center gap-1">🔒 E2EE Active</p>}
+                  {/* --- NEW: Dynamic Header UI based on Online Status --- */}
+                  {isTargetOnline ? (
+                      aesKey ? <p className="text-xs text-[#00a884] flex items-center gap-1">🔒 E2EE Active</p> : <p className="text-xs text-yellow-500 flex items-center gap-1">⏳ Connecting...</p>
+                  ) : (
+                      <p className="text-xs text-red-500 flex items-center gap-1">❌ Offline</p>
+                  )}
                 </div>
               </>
             ) : (
@@ -365,15 +381,16 @@ function App() {
         </div>
         
         <div className="p-3 bg-[#202c33] flex gap-2 items-center z-10">
-          {/* THE FIX: Enhanced placeholder text to show EXACTLY what is blocking the typing */}
+          {/* --- NEW: Dynamic Input Box disabling --- */}
           <input 
             type="text" 
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={!selectedTarget || !aesKey}
+            disabled={!selectedTarget || !aesKey || !isTargetOnline}
             placeholder={
                 !selectedTarget ? "Select a user first..." : 
+                !isTargetOnline ? "User is offline..." :
                 !aesKey ? "Negotiating secure connection..." : 
                 "Type a message"
             } 
@@ -381,7 +398,7 @@ function App() {
           />
           <button 
             onClick={sendMessage}
-            disabled={!selectedTarget || !aesKey}
+            disabled={!selectedTarget || !aesKey || !isTargetOnline}
             className="bg-[#00a884] hover:bg-[#008f6f] disabled:bg-[#2a3942] disabled:text-gray-500 text-white p-3 rounded-full transition-colors flex items-center justify-center w-12 h-12"
           >
             <svg viewBox="0 0 24 24" height="24" width="24" preserveAspectRatio="xMidYMid meet" fill="currentColor">
