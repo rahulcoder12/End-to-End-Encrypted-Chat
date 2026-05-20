@@ -49,6 +49,13 @@ wss.on('connection', (socket) => {
                 broadcastUserList();
             }
         }
+        // NEW: Send the roster only to the person who asked for it
+        else if (data.type === 'REQUEST_USER_LIST') {
+            const userList = Array.from(activeUsers.keys());
+            socket.send(JSON.stringify({ type: 'USER_LIST', users: userList }));
+        }
+
+        // 3. TARGETED ROUTING (Handshakes & Chat)
 
         // 3. TARGETED ROUTING (Handshakes & Chat)
         else if (data.target) {

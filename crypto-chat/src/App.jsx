@@ -5,22 +5,25 @@ import Terminal from './components/Terminal';
 
 function App() {
   // --- AUTHENTICATION STATES ---
-  const [authMode, setAuthMode] = useState('LOGIN'); // 'LOGIN' or 'REGISTER'
+  const [authMode, setAuthMode] = useState('LOGIN'); 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState(''); // NEW
   const [authError, setAuthError] = useState('');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   
+  // --- CAPTCHA STATES ---
+  const [captcha, setCaptcha] = useState({ num1: 0, num2: 0, answer: 0 });
+  const [captchaInput, setCaptchaInput] = useState('');
+
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [selectedTarget, setSelectedTarget] = useState(null);
-
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const ws = useRef(null);
   const [aesKey, setAesKey] = useState(null);
-  
   const [showCiphertext, setShowCiphertext] = useState(false);
-  const [showTerminal, setShowTerminal] = useState(false); // DEFAULT CLOSED!
+  const [showTerminal, setShowTerminal] = useState(false); 
 
   const [myKeyPair, setMyKeyPair] = useState(null);
   const [terminalLogs, setTerminalLogs] = useState([
@@ -28,7 +31,22 @@ function App() {
     "> Waiting for user authentication..."
   ]);
 
-  // Save chat history locally
+  // Generate a random math problem for the CAPTCHA
+  const generateCaptcha = () => {
+    const n1 = Math.floor(Math.random() * 10) + 1;
+    const n2 = Math.floor(Math.random() * 10) + 1;
+    setCaptcha({ num1: n1, num2: n2, answer: n1 + n2 });
+    setCaptchaInput('');
+  };
+
+  // Run once on load, and regenerate if they switch between Login/Register
+  useEffect(() => {
+    generateCaptcha();
+    setAuthError('');
+    setCaptchaInput('');
+    setConfirmPassword('');
+  }, [authMode]);
+
   useEffect(() => {
     if (username && selectedTarget && messages.length > 0) {
         const storageKey = `chat_${username}_${selectedTarget}`;
@@ -36,12 +54,24 @@ function App() {
     }
   }, [messages, selectedTarget, username]);
 
-  // Handle Login/Register Request
+  // Handle Login/Register Request with Bot Protection
   const handleAuth = () => {
-      if (!username.trim() || !password.trim()) return;
-      setAuthError('');
+      if (!username.trim() || !password.trim() || !captchaInput.trim()) return;
       
-      // Connect to server just for authentication
+      // 1. CAPTCHA Check
+      if (parseInt(captchaInput) !== captcha.answer) {
+          setAuthError('CAPTCHA verification failed. Are you a bot?');
+          generateCaptcha(); // Force a new test if they fail
+          return;
+      }
+
+      // 2. Confirm Password Check (Only on Register)
+      if (authMode === 'REGISTER' && password !== confirmPassword) {
+          setAuthError('Passwords do not match.');
+          return;
+      }
+
+      setAuthError('');
       ws.current = new WebSocket('ws://localhost:8080');
       
       ws.current.onopen = () => {
@@ -52,6 +82,7 @@ function App() {
           const data = JSON.parse(event.data);
           if (data.type === 'AUTH_ERROR') {
               setAuthError(data.message);
+              generateCaptcha(); // Regenerate CAPTCHA on server rejection
               ws.current.close();
           } else if (data.type === 'AUTH_SUCCESS') {
               setIsLoggedIn(true);
@@ -59,7 +90,6 @@ function App() {
       };
   };
 
-  // Run Crypto Setup ONLY after successful login
   useEffect(() => {
     if (!isLoggedIn) return;
 
@@ -72,7 +102,6 @@ function App() {
         const exportedPublic = await exportPublicKey(keys.publicKey);
         setTerminalLogs(prev => [...prev, `> Public Key generated.`]);
 
-        // Switch the WebSocket to listen for Chat and Handshakes instead of Auth
         ws.current.onmessage = async (event) => {
           try {
             const data = JSON.parse(event.data);
@@ -83,7 +112,6 @@ function App() {
             }
             else if (data.type === 'HANDSHAKE') {
               setTerminalLogs(prev => [...prev, `> Handshake received from ${data.sender}`]);
-              
               setSelectedTarget(data.sender);
               const savedHistory = localStorage.getItem(`chat_${username}_${data.sender}`);
               setMessages(savedHistory ? JSON.parse(savedHistory) : []);
@@ -93,7 +121,6 @@ function App() {
               setAesKey(sharedSecret);
               
               setTerminalLogs(prev => [...prev, "> CRITICAL: AES-256 Shared Secret Derived!"]);
-              
               ws.current.send(JSON.stringify({
                 type: 'HANDSHAKE_REPLY',
                 target: data.sender,
@@ -102,17 +129,14 @@ function App() {
             } 
             else if (data.type === 'HANDSHAKE_REPLY') {
               setTerminalLogs(prev => [...prev, `> Handshake Reply from ${data.sender}`]);
-              
               const peerPublicKey = await importPublicKey(data.publicKey);
               const sharedSecret = await deriveSharedSecret(keys.privateKey, peerPublicKey);
               setAesKey(sharedSecret);
-              
               setTerminalLogs(prev => [...prev, "> CRITICAL: AES-256 Shared Secret Derived!"]);
             }
             else if (data.type === 'CHAT') {
               if (data.ciphertext && data.iv) {
                 setTerminalLogs(prev => [...prev, `> Inbound Encrypted from ${data.sender}`]);
-                
                 setAesKey(currentAesKey => {
                   if (currentAesKey) {
                     decryptMessage(data.ciphertext, data.iv, currentAesKey)
@@ -137,13 +161,11 @@ function App() {
         console.error("Cryptography setup failed:", error);
       }
     };
-
     setupSecurity();
-
     return () => {
       if (ws.current) ws.current.close();
     };
-  }, [isLoggedIn, username]); // Only runs once when logged in
+  }, [isLoggedIn, username]);
 
   const startChat = async (peerName) => {
     setSelectedTarget(peerName);
@@ -158,7 +180,6 @@ function App() {
     
     setTerminalLogs(prev => [...prev, `> Initiating secure handshake with ${peerName}...`]);
     const exportedPublic = await exportPublicKey(myKeyPair.publicKey);
-    
     ws.current.send(JSON.stringify({
         type: 'HANDSHAKE',
         target: peerName, 
@@ -172,16 +193,13 @@ function App() {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       if (aesKey) {
         const { ciphertext, iv } = await encryptMessage(inputText, aesKey);
-
         ws.current.send(JSON.stringify({
           type: 'CHAT',
           target: selectedTarget,
           ciphertext: ciphertext,
           iv: iv
         }));
-
         setTerminalLogs(prev => [...prev, `> Outbound Encrypted to ${selectedTarget}`]);
-
         setMessages(prev => [...prev, { 
             sender: 'Me', 
             text: inputText, 
@@ -198,21 +216,21 @@ function App() {
     }
   };
 
+  // --- 1. THE AUTHENTICATION UI ---
   if (!isLoggedIn) {
       return (
           <div className="flex h-screen bg-[#0b141a] justify-center items-center font-sans">
               <div className="bg-[#111b21] p-8 rounded-lg shadow-2xl w-96 flex flex-col gap-4 border border-[#202c33]">
                   <h1 className="text-2xl font-bold text-[#00a884] text-center mb-2">Secure Network</h1>
                   
-                  {/* Toggle Login/Register */}
                   <div className="flex bg-[#202c33] rounded-lg p-1 mb-2">
                       <button 
                           className={`flex-1 py-2 text-sm font-bold rounded-md transition-colors ${authMode === 'LOGIN' ? 'bg-[#00a884] text-white' : 'text-gray-400 hover:text-gray-200'}`}
-                          onClick={() => { setAuthMode('LOGIN'); setAuthError(''); }}
+                          onClick={() => setAuthMode('LOGIN')}
                       >Login</button>
                       <button 
                           className={`flex-1 py-2 text-sm font-bold rounded-md transition-colors ${authMode === 'REGISTER' ? 'bg-[#00a884] text-white' : 'text-gray-400 hover:text-gray-200'}`}
-                          onClick={() => { setAuthMode('REGISTER'); setAuthError(''); }}
+                          onClick={() => setAuthMode('REGISTER')}
                       >Register</button>
                   </div>
 
@@ -230,12 +248,37 @@ function App() {
                       placeholder="Password" 
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleAuth()}
                       className="p-3 rounded bg-[#202c33] text-[#e9edef] outline-none focus:ring-2 focus:ring-[#00a884]"
                   />
+                  
+                  {/* Conditionally render Confirm Password only on Register */}
+                  {authMode === 'REGISTER' && (
+                      <input 
+                          type="password" 
+                          placeholder="Confirm Password" 
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          className="p-3 rounded bg-[#202c33] text-[#e9edef] outline-none focus:ring-2 focus:ring-[#00a884]"
+                      />
+                  )}
+
+                  {/* Math CAPTCHA UI */}
+                  <div className="bg-[#202c33] p-3 rounded flex items-center justify-between border border-[#2a3942]">
+                      <span className="text-gray-300 font-mono text-sm tracking-wider">
+                          Prove you are human:<br/> <strong className="text-[#00a884] text-lg">{captcha.num1} + {captcha.num2} = ?</strong>
+                      </span>
+                      <input 
+                          type="number" 
+                          value={captchaInput}
+                          onChange={(e) => setCaptchaInput(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleAuth()}
+                          className="w-16 p-2 rounded bg-[#111b21] text-white text-center outline-none focus:ring-2 focus:ring-[#00a884]"
+                      />
+                  </div>
+
                   <button 
                       onClick={handleAuth}
-                      disabled={!username.trim() || !password.trim()}
+                      disabled={!username.trim() || !password.trim() || !captchaInput.trim()}
                       className="bg-[#00a884] hover:bg-[#008f6f] disabled:bg-[#202c33] disabled:text-gray-500 text-white font-bold py-3 px-4 rounded transition-colors mt-2"
                   >
                       {authMode === 'LOGIN' ? 'Access Terminal' : 'Create Account'}
@@ -245,9 +288,9 @@ function App() {
       );
   }
 
+  // --- 2. THE CHAT UI ---
   return (
     <div className="flex h-screen bg-[#0b141a] text-[#e9edef] font-sans overflow-hidden">
-      
       <Sidebar 
         username={username}
         onlineUsers={onlineUsers}
@@ -255,7 +298,6 @@ function App() {
         startChat={startChat}
       />
 
-      {/* CENTER PANE: The User View (Chat) */}
       <div 
         className={`flex flex-col relative transition-all duration-300 ${showTerminal ? 'w-2/4' : 'flex-1'}`} 
         style={{ 
