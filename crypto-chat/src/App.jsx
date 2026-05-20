@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar';
 import Terminal from './components/Terminal';
 
 function App() {
+  // --- AUTHENTICATION STATES ---
   const [authMode, setAuthMode] = useState('LOGIN'); 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -11,14 +12,17 @@ function App() {
   const [authError, setAuthError] = useState('');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   
+  // --- CAPTCHA STATES ---
   const [captcha, setCaptcha] = useState({ num1: 0, num2: 0, answer: 0 });
   const [captchaInput, setCaptchaInput] = useState('');
 
+  // --- CHAT & UI STATES ---
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [selectedTarget, setSelectedTarget] = useState(null);
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const ws = useRef(null);
+  const messagesEndRef = useRef(null); // Reference to the bottom of the chat
   const [aesKey, setAesKey] = useState(null);
   const [showCiphertext, setShowCiphertext] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false); 
@@ -29,8 +33,17 @@ function App() {
     "> Waiting for user authentication..."
   ]);
 
-  // --- NEW: Helper variable to track if our current chat partner is online ---
+  // Helper variable to track if our current chat partner is online
   const isTargetOnline = selectedTarget && onlineUsers.includes(selectedTarget);
+
+  // --- AUTO-SCROLL LOGIC ---
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, showCiphertext]);
 
   const generateCaptcha = () => {
     const n1 = Math.floor(Math.random() * 10) + 1;
@@ -53,8 +66,7 @@ function App() {
     }
   }, [messages, selectedTarget, username]);
 
-  // --- NEW: The Disconnect Tripwire ---
-  // If our selected target drops offline, destroy the lock and log it.
+  // The Disconnect Tripwire
   useEffect(() => {
     if (selectedTarget && !onlineUsers.includes(selectedTarget)) {
       if (aesKey) {
@@ -230,6 +242,7 @@ function App() {
     }
   };
 
+  // --- 1. THE AUTHENTICATION UI ---
   if (!isLoggedIn) {
       return (
           <div className="flex h-screen bg-[#0b141a] justify-center items-center font-sans">
@@ -299,6 +312,7 @@ function App() {
       );
   }
 
+  // --- 2. THE CHAT UI ---
   return (
     <div className="flex h-screen bg-[#0b141a] text-[#e9edef] font-sans overflow-hidden">
       <Sidebar 
@@ -325,7 +339,6 @@ function App() {
                 </div>
                 <div>
                   <h2 className="font-semibold text-[#e9edef]">{selectedTarget}</h2>
-                  {/* --- NEW: Dynamic Header UI based on Online Status --- */}
                   {isTargetOnline ? (
                       aesKey ? <p className="text-xs text-[#00a884] flex items-center gap-1">🔒 E2EE Active</p> : <p className="text-xs text-yellow-500 flex items-center gap-1">⏳ Connecting...</p>
                   ) : (
@@ -378,10 +391,11 @@ function App() {
               </div>
             ))
           )}
+          {/* Invisible anchor to scroll to */}
+          <div ref={messagesEndRef} />
         </div>
         
         <div className="p-3 bg-[#202c33] flex gap-2 items-center z-10">
-          {/* --- NEW: Dynamic Input Box disabling --- */}
           <input 
             type="text" 
             value={inputText}
