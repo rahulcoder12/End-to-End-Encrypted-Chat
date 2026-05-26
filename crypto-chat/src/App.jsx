@@ -90,7 +90,7 @@ function App() {
       }
 
       setAuthError('');
-      ws.current = new WebSocket('ws://localhost:8080');
+      ws.current = new WebSocket('wss://secure-chat-server-mu2g.onrender.com');
       
       ws.current.onopen = () => {
           ws.current.send(JSON.stringify({ type: authMode, username, password }));
