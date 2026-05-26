@@ -2,9 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { generateKeyPair, exportPublicKey, importPublicKey, deriveSharedSecret, encryptMessage, decryptMessage } from './cryptoUtils';
 import Sidebar from './components/Sidebar';
 import Terminal from './components/Terminal';
+import LandingPage from './components/LandingPage';
 
 function App() {
   // --- AUTHENTICATION STATES ---
+  const [showLanding, setShowLanding] = useState(true);
   const [authMode, setAuthMode] = useState('LOGIN'); 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -241,7 +243,10 @@ function App() {
       sendMessage();
     }
   };
-
+  if (showLanding) {
+    // When they click the CTA, we flip showLanding to false, exposing the Login screen
+    return <LandingPage onEnter={() => setShowLanding(false)} />;
+  }
   // --- 1. THE AUTHENTICATION UI ---
   if (!isLoggedIn) {
       return (
