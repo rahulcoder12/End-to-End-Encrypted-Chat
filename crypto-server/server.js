@@ -1,6 +1,13 @@
 const WebSocket = require('ws');
 
-const wss = new WebSocket.Server({ port: 8080 });
+// Let the cloud provider assign the port, or use 8080 locally
+const PORT = process.env.PORT || 8080; 
+const wss = new WebSocket.Server({ port: PORT });
+
+const registeredAccounts = new Map(); 
+const activeUsers = new Map(); 
+
+console.log(`Secure Routing Server running on port ${PORT}`);
 const registeredAccounts = new Map(); 
 const activeUsers = new Map(); 
 
