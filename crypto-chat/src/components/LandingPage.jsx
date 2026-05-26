@@ -4,6 +4,11 @@ const LandingPage = ({ onEnter }) => {
   const [activeTab, setActiveTab] = useState('encryption');
   const [openFaq, setOpenFaq] = useState(null);
 
+  // FIX: Added the missing toggle function for FAQs
+  const toggleFaq = (index) => {
+    setOpenFaq(openFaq === index ? null : index);
+  };
+
   const tabs = {
     encryption: {
       title: "AES-256-GCM Encryption",
@@ -41,18 +46,12 @@ const LandingPage = ({ onEnter }) => {
       {/* --- NAVBAR --- */}
       <nav className="relative flex justify-between items-center p-6 max-w-7xl w-full mx-auto z-10">
         <div className="flex items-center gap-2">
-          {/* Logo removed, replaced with vibrant typography */}
+          {/* REMOVED ZORVYN - Replaced with generic name */}
           <span className="font-black text-2xl tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500 drop-shadow-[0_0_10px_rgba(34,211,238,0.4)]">
-            Zorvyn
+            SecureNet
           </span>
         </div>
-        <button 
-          onClick={onEnter}
-          className="relative inline-flex items-center justify-center px-6 py-2.5 text-sm font-bold text-white transition-all duration-200 bg-gray-900 border border-gray-700 rounded-full hover:bg-gray-800 hover:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 overflow-hidden group"
-        >
-          <span className="absolute inset-0 w-full h-full -mt-1 rounded-lg opacity-30 bg-gradient-to-b from-transparent via-transparent to-cyan-500 group-hover:opacity-100 transition-opacity"></span>
-          <span className="relative">Access Terminal</span>
-        </button>
+        {/* REMOVED ACCESS TERMINAL BUTTON */}
       </nav>
 
       {/* --- HERO SECTION --- */}
@@ -74,6 +73,7 @@ const LandingPage = ({ onEnter }) => {
         </p>
         
         <div className="flex flex-col sm:flex-row gap-5">
+          {/* Kept this button to actually enter the app */}
           <button 
             onClick={onEnter}
             className="group relative px-8 py-4 font-bold text-white rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 transition-all shadow-[0_0_30px_rgba(34,211,238,0.3)] hover:shadow-[0_0_40px_rgba(34,211,238,0.6)] hover:scale-105 active:scale-95"
@@ -129,10 +129,11 @@ const LandingPage = ({ onEnter }) => {
               <button
                 key={key}
                 onClick={() => setActiveTab(key)}
-                className={`flex-1 py-5 px-6 font-bold text-sm sm:text-base tracking-wide transition-all ${
+                // NEW: Added vibrant hover effects (glow, text color change, border reveal)
+                className={`flex-1 py-5 px-6 font-bold text-sm sm:text-base tracking-wide transition-all duration-300 border-b-2 ${
                   activeTab === key 
-                    ? 'bg-white/10 text-white border-b-2 border-cyan-400' 
-                    : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+                    ? 'bg-white/10 text-white border-cyan-400 shadow-[inset_0_-2px_15px_rgba(34,211,238,0.2)]' 
+                    : 'text-gray-500 border-transparent hover:text-cyan-300 hover:bg-cyan-500/10 hover:border-cyan-400/50 hover:shadow-[inset_0_-2px_20px_rgba(34,211,238,0.15)]'
                 }`}
               >
                 {key === 'encryption' && 'Cryptography'}
