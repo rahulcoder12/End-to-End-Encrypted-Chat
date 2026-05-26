@@ -4,14 +4,11 @@ const WebSocket = require('ws');
 const PORT = process.env.PORT || 8080; 
 const wss = new WebSocket.Server({ port: PORT });
 
+// These will only be declared once now!
 const registeredAccounts = new Map(); 
 const activeUsers = new Map(); 
 
 console.log(`Secure Routing Server running on port ${PORT}`);
-const registeredAccounts = new Map(); 
-const activeUsers = new Map(); 
-
-console.log("Secure Routing Server running on ws://localhost:8080");
 
 wss.on('connection', (socket) => {
     let currentUsername = null; 
@@ -49,7 +46,6 @@ wss.on('connection', (socket) => {
                     broadcastUserList();
                 }
             }
-            // THE FIX: Explicitly send the roster if a client requests it
             else if (data.type === 'REQUEST_USER_LIST') {
                 const userList = Array.from(activeUsers.keys());
                 socket.send(JSON.stringify({ type: 'USER_LIST', users: userList }));
